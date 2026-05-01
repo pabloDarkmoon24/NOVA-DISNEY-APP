@@ -1,0 +1,3 @@
+- [x] Crear configuración local de frontend para forzar uso de backend local
+- [x] Verificar que no exista override de VITE_API_URL hacia producción
+- [ ] Entregar instrucciones de ejecución/validación
