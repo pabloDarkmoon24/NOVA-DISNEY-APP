@@ -1,0 +1,11 @@
+{
+  "name": "nova-panel",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "cd backend && npm install && npm run build",
+    "start": "cd backend && node server.js"
+  }
+}
