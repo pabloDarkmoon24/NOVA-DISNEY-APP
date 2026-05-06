@@ -11,14 +11,10 @@ const isRemote =
   !connectionString.includes('localhost') &&
   !connectionString.includes('127.0.0.1');
 
-// rejectUnauthorized:true valida el certificado del servidor.
-// Si Railway usa una CA no estándar, agrega DATABASE_CA_CERT en las variables de entorno
-// con el contenido del certificado CA y se usará automáticamente.
-const sslConfig = (() => {
-  if (!isRemote) return false;
-  const ca = process.env.DATABASE_CA_CERT;
-  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
-})();
+// Railway PostgreSQL usa certificado autofirmado internamente.
+// rejectUnauthorized: false mantiene el cifrado TLS pero omite la validación de CA.
+// La conexión sigue siendo cifrada — solo se omite la verificación de la cadena.
+const sslConfig = isRemote ? { rejectUnauthorized: false } : false;
 
 const pool = new Pool({
   connectionString,
