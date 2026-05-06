@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nova_app') THEN
-    CREATE ROLE nova_app LOGIN PASSWORD 'CHANGE_ME';
+    CREATE ROLE nova_app LOGIN PASSWORD '5ckt12rX5S5kq96qan3utb7UiYPgQVk';
   END IF;
 END $$;
 

@@ -40,3 +40,6 @@ backend/scripts/deleteAllUsers.js
 
 # ── Vercel (no se usa — despliegue en Railway) ────────────────────────────────
 frontend/vercel.json
+
+# ── railway.json viejo (movido a la raíz) ────────────────────────────────────
+backend/railway.json
