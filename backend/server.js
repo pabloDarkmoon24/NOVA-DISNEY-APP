@@ -131,16 +131,17 @@ const buyLimiter = rateLimit({
   message: { success: false, message: 'Límite de compras alcanzado, intenta más tarde' },
 });
 
-app.use('/api/',              generalLimiter);
-app.use('/api/auth/login',    authLimiter);
-app.use('/api/auth/register', authLimiter);
-app.use('/api/nova/buy',      buyLimiter);
+app.use('/api/',                   generalLimiter);
+app.use('/api/auth/login',         authLimiter);
+app.use('/api/auth/register',      authLimiter);
+app.use('/api/nova/buy',           buyLimiter);
+app.use('/api/nova/bulk/execute',  buyLimiter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', async (req, res) => {
   try {
     await query('SELECT 1');
-    res.json({ status: 'OK', db: 'connected', timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
+    res.json({ status: 'OK', db: 'connected', timestamp: new Date().toISOString() });
   } catch {
     res.status(503).json({ status: 'ERROR', db: 'disconnected', timestamp: new Date().toISOString() });
   }

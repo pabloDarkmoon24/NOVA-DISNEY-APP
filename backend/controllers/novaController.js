@@ -484,6 +484,9 @@ exports.bulkExecute = async (req, res) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'La lista de compras está vacía' });
     }
+    if (items.length > 100) {
+      return res.status(400).json({ success: false, message: 'Máximo 100 compras por lote' });
+    }
 
     const nova     = await getServiceForUser(userId);
     const products = await nova.getProducts();

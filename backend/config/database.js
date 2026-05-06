@@ -11,9 +11,18 @@ const isRemote =
   !connectionString.includes('localhost') &&
   !connectionString.includes('127.0.0.1');
 
+// rejectUnauthorized:true valida el certificado del servidor.
+// Si Railway usa una CA no estándar, agrega DATABASE_CA_CERT en las variables de entorno
+// con el contenido del certificado CA y se usará automáticamente.
+const sslConfig = (() => {
+  if (!isRemote) return false;
+  const ca = process.env.DATABASE_CA_CERT;
+  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
+})();
+
 const pool = new Pool({
   connectionString,
-  ssl: isRemote ? { rejectUnauthorized: false } : false,
+  ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

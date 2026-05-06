@@ -27,5 +27,16 @@ Thumbs.db
 .idea/
 *.swp
 
-# ── Firebase (ya no se usa) ───────────────────────────────────────────────────
+# ── Firebase (ya no se usa — migrado a PostgreSQL) ───────────────────────────
 .firebase/
+.firebaserc
+firebase.json
+firestore.rules
+backend/config/firebase.js
+
+# ── Scripts de administración (no desplegar) ──────────────────────────────────
+backend/scripts/deleteUser.js
+backend/scripts/deleteAllUsers.js
+
+# ── Vercel (no se usa — despliegue en Railway) ────────────────────────────────
+frontend/vercel.json
