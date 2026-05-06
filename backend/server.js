@@ -85,18 +85,20 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
   : [];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // peticiones internas / health check
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`Origen no permitido por CORS: ${origin}`));
-    },
-    credentials:    true,
-    methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+// CORS solo en rutas /api — los assets estáticos son mismo origen y no necesitan CORS.
+// Vite agrega crossorigin a los assets, lo que hace que el navegador envíe Origin
+// incluso en peticiones mismo-origen; aplicar CORS global los bloquearía.
+const corsMiddleware = cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`Origen no permitido por CORS: ${origin}`));
+  },
+  credentials:    true,
+  methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+});
+app.use('/api', corsMiddleware);
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));
