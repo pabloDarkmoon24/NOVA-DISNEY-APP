@@ -172,9 +172,11 @@ app.use((req, res) => {
 // ── Error handler global ──────────────────────────────────────────────────────
 app.use((err, req, res, _next) => {
   console.error('Error no manejado:', err);
-  res.status(err.status || 500).json({
+  const isCors = err.message && err.message.includes('CORS');
+  const status = isCors ? 403 : (err.status || 500);
+  res.status(status).json({
     success: false,
-    message: isDev ? err.message : 'Error interno del servidor',
+    message: isDev ? err.message : (isCors ? 'Origen no permitido' : 'Error interno del servidor'),
   });
 });
 
