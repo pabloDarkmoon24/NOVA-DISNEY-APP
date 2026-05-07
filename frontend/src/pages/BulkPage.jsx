@@ -33,6 +33,7 @@ export default function BulkPage() {
 
   const [progress, setProgress]         = useState([]);
   const [results, setResults]           = useState(null);
+  const isExecutingRef                  = useRef(false);
 
   // ── Cargar productos y saldo ─────────────────────────────────────────────
 
@@ -175,8 +176,9 @@ export default function BulkPage() {
 
   const handleExecute = async () => {
     const validItems = validated.filter((i) => i.valid);
-    if (validItems.length === 0) return;
+    if (validItems.length === 0 || isExecutingRef.current) return;
 
+    isExecutingRef.current = true;
     setStep(STEPS.EXECUTING);
     setProgress(validItems.map((i) => ({ ...i, status: 'pending' })));
 
@@ -209,8 +211,14 @@ export default function BulkPage() {
         toast.success(`${response.data.successCount} compras exitosas`);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Error al ejecutar el lote');
-      setStep(STEPS.PREVIEW);
+      // No regresar al STEP 2 — el servidor pudo haber procesado compras antes del error.
+      // Mostrar advertencia y dejar al usuario en RESULTS vacío para que revise el historial.
+      const msg = err.response?.data?.message || err.message || 'Error de conexión';
+      setResults({ results: [], successCount: 0, failCount: validItems.length, networkError: msg });
+      setStep(STEPS.RESULTS);
+      toast.error(`Error: ${msg}. Revisa el historial para verificar qué compras se procesaron.`);
+    } finally {
+      isExecutingRef.current = false;
     }
   };
 
@@ -568,6 +576,23 @@ export default function BulkPage() {
         {/* ── STEP 4: RESULTS ── */}
         {step === STEPS.RESULTS && results && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {results.networkError && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                padding: '14px 16px', background: 'rgba(255,170,0,0.07)',
+                border: '1px solid rgba(255,170,0,0.3)', borderRadius: 'var(--radius-md)',
+                color: '#ffaa00', fontSize: '13px', lineHeight: 1.6,
+              }}>
+                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <strong>Error de conexión durante la ejecución.</strong> Es posible que algunas compras sí se hayan procesado en el servidor.{' '}
+                  <strong>No vuelvas a ejecutar el lote</strong> sin antes revisar el{' '}
+                  <a href="/history" style={{ color: '#ffaa00' }}>historial de transacciones</a>.
+                  <br /><span style={{ opacity: 0.7, fontSize: '12px' }}>{results.networkError}</span>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
               {[

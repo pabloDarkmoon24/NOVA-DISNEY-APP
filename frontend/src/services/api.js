@@ -43,7 +43,11 @@ api.interceptors.response.use(
     }
 
     // Error de red o timeout sin respuesta del servidor: reintentar una vez
-    if (!error.response && error.config && !error.config._retried) {
+    // Excluir endpoints de compra masiva — un reintento causaría cobros dobles
+    const isNonRetryable =
+      error.config?.url?.includes('/nova/bulk/execute') ||
+      error.config?.url?.includes('/nova/quick');
+    if (!error.response && error.config && !error.config._retried && !isNonRetryable) {
       error.config._retried = true;
       await new Promise((r) => setTimeout(r, 1000));
       return api(error.config);

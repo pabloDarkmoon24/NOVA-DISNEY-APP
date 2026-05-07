@@ -28,13 +28,13 @@ export default function HistoryPage() {
 
   // ── Cargar historial ─────────────────────────────────────────────────────
 
-  const loadHistory = useCallback(async (currentPage = 1, showRefresh = false) => {
+  const loadHistory = useCallback(async (currentPage = 1, showRefresh = false, overrideFilters = null) => {
     if (showRefresh) setRefreshing(true);
     else setLoading(true);
 
     try {
       const response = await novaService.getHistory({
-        ...filters,
+        ...(overrideFilters ?? filters),
         page: currentPage,
         limit: 50,
       });
@@ -69,8 +69,9 @@ export default function HistoryPage() {
   };
 
   const clearFilters = () => {
-    setFilters({ status: '', from: '', to: '' });
-    setTimeout(() => loadHistory(1), 0);
+    const empty = { status: '', from: '', to: '' };
+    setFilters(empty);
+    loadHistory(1, false, empty);
   };
 
   // ── Paginación ───────────────────────────────────────────────────────────

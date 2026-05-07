@@ -35,8 +35,13 @@ const authService = {
   getToken: () => localStorage.getItem('token'),
 
   getUser: () => {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user) : null;
+    try {
+      const user = localStorage.getItem('user');
+      return user ? JSON.parse(user) : null;
+    } catch {
+      localStorage.removeItem('user');
+      return null;
+    }
   },
 
   isAuthenticated: () => !!localStorage.getItem('token'),

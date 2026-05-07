@@ -1,11 +1,15 @@
 const { withUserScope } = require('../config/database');
-const { getNovaService } = require('../services/novaService');
+const { getNovaService, NovaUserService, clearUserCache } = require('../services/novaService');
 const { getUserScope } = require('../middleware/userScope');
 const { body, validationResult } = require('express-validator');
+const { encrypt } = require('../services/cryptoService');
 
 // Cache de credenciales Nova por usuario para evitar leer la DB en cada request
 const credentialsCache = new Map();
 const CREDENTIALS_TTL  = 5 * 60 * 1000; // 5 minutos
+
+// Lock de ejecución masiva por usuario — evita lotes dobles desde pestañas paralelas
+const bulkExecutionLock = new Set();
 
 // ── Validaciones ──────────────────────────────────────────────────────────────
 
@@ -222,11 +226,13 @@ exports.getHistory = async (req, res) => {
     const pageNum  = Math.max(Number(page), 1);
     const offset   = (pageNum - 1) * pageSize;
 
+    const ALLOWED_STATUSES = new Set(['completed', 'pending', 'failed', 'success']);
+
     const result = await withUserScope(userId, async (client) => {
       const conditions    = [];
       const filterParams  = [];
 
-      if (status) {
+      if (status && ALLOWED_STATUSES.has(status)) {
         filterParams.push(status);
         conditions.push(`status = $${filterParams.length}`);
       }
@@ -477,9 +483,18 @@ exports.bulkBuy = async (req, res) => {
 // ── POST /api/nova/bulk/execute ───────────────────────────────────────────────
 
 exports.bulkExecute = async (req, res) => {
+  const { userId } = getUserScope(req);
+
+  // Bloquear ejecuciones paralelas del mismo usuario (p.ej. dos pestañas)
+  if (bulkExecutionLock.has(userId)) {
+    return res.status(409).json({
+      success: false,
+      message: 'Ya hay un lote en ejecución para este usuario. Espera a que termine.',
+    });
+  }
+
   try {
-    const { items }  = req.body;
-    const { userId } = getUserScope(req);
+    const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: 'La lista de compras está vacía' });
@@ -488,39 +503,55 @@ exports.bulkExecute = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Máximo 100 compras por lote' });
     }
 
+    bulkExecutionLock.add(userId);
+
     const nova     = await getServiceForUser(userId);
     const products = await nova.getProducts();
     const results  = [];
 
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+      const item    = items[i];
+      const product = products.find((p) => p.id === Number(item.productId));
+
+      let purchase = null;
+      let buyError = null;
+
+      // Paso 1: intentar cobrar en Nova
       try {
-        const purchase = await nova.buyProduct({
+        purchase = await nova.buyProduct({
           customerName: item.customerName,
           email:        item.email,
           productId:    Number(item.productId),
         });
+      } catch (err) {
+        buyError = err.message;
+      }
 
-        const product = products.find((p) => p.id === Number(item.productId));
-
-        await saveTransaction(userId, {
-          reference:     purchase.reference,
-          customerName:  item.customerName,
-          email:         item.email,
-          productId:     Number(item.productId),
-          productName:   product?.name  || 'Desconocido',
-          price:         product?.price || 0,
-          novaId:        purchase.id             || null,
-          transactionId: purchase.transactionId  || purchase.reference,
-          status:        purchase.status         || 'completed',
-          activationUrl: purchase.activationUrl  || null,
-          result:        purchase.result         || null,
-          bulk:          true,
-        });
+      if (purchase) {
+        // Paso 2: guardar en DB — si falla, loguear pero NO marcar como fallida
+        // (la compra ya se realizó en Nova y el cobro ya ocurrió)
+        try {
+          await saveTransaction(userId, {
+            reference:     purchase.reference,
+            customerName:  item.customerName,
+            email:         item.email,
+            productId:     Number(item.productId),
+            productName:   product?.name  || 'Desconocido',
+            price:         product?.price || 0,
+            novaId:        purchase.id             || null,
+            transactionId: purchase.transactionId  || purchase.reference,
+            status:        purchase.status         || 'completed',
+            activationUrl: purchase.activationUrl  || null,
+            result:        purchase.result         || null,
+            bulk:          true,
+          });
+        } catch (dbErr) {
+          console.error(`[bulkExecute] Error al guardar TX en DB para ${item.email}:`, dbErr.message);
+        }
 
         results.push({ email: item.email, customerName: item.customerName, success: true, data: purchase });
-      } catch (err) {
-        results.push({ email: item.email, customerName: item.customerName, success: false, error: err.message });
+      } else {
+        results.push({ email: item.email, customerName: item.customerName, success: false, error: buyError });
       }
 
       if (i < items.length - 1) {
@@ -542,5 +573,174 @@ exports.bulkExecute = async (req, res) => {
       success: false,
       message: err.message || 'Error al ejecutar el lote',
     });
+  } finally {
+    bulkExecutionLock.delete(userId);
+  }
+};
+
+// ── POST /api/nova/quick ──────────────────────────────────────────────────────
+
+const ALLOWED_QUANTITIES = new Set([5, 10, 20, 30, 50]);
+
+exports.quickBuyValidation = [
+  body('productId')
+    .notEmpty().withMessage('El producto es requerido')
+    .isNumeric().withMessage('ID de producto inválido'),
+  body('customerName')
+    .trim()
+    .notEmpty().withMessage('El nombre del cliente es requerido')
+    .isLength({ min: 2, max: 100 }).withMessage('El nombre debe tener entre 2 y 100 caracteres'),
+  body('email')
+    .trim()
+    .notEmpty().withMessage('El correo del cliente es requerido')
+    .isEmail().withMessage('El correo no es válido')
+    .normalizeEmail(),
+  body('quantity')
+    .notEmpty().withMessage('La cantidad es requerida')
+    .isInt().withMessage('Cantidad inválida')
+    .toInt()
+    .custom((v) => ALLOWED_QUANTITIES.has(v))
+    .withMessage('Cantidad debe ser 5, 10, 20, 30 o 50'),
+];
+
+exports.quickBuy = async (req, res) => {
+  const { userId } = getUserScope(req);
+
+  if (bulkExecutionLock.has(userId)) {
+    return res.status(409).json({
+      success: false,
+      message: 'Ya hay una ejecución en curso para este usuario.',
+    });
+  }
+
+  try {
+    const validationError = handleValidationErrors(req, res);
+    if (validationError) return;
+
+    const { productId, customerName, email, quantity } = req.body;
+
+    bulkExecutionLock.add(userId);
+
+    const nova = await getServiceForUser(userId);
+    const [products, balanceData] = await Promise.all([nova.getProducts(), nova.getBalance()]);
+
+    const product = products.find((p) => p.id === Number(productId));
+    if (!product) {
+      return res.status(400).json({ success: false, message: 'Producto no encontrado', errorCode: 522 });
+    }
+
+    const totalCost = product.price * quantity;
+    if (balanceData.balance < totalCost) {
+      return res.status(400).json({
+        success:   false,
+        message:   'Saldo insuficiente para ejecutar todas las compras',
+        errorCode: 521,
+        details:   { required: totalCost, available: balanceData.balance },
+      });
+    }
+
+    const results = [];
+
+    for (let i = 0; i < quantity; i++) {
+      let purchase = null;
+      let buyError = null;
+
+      try {
+        purchase = await nova.buyProduct({ customerName, email, productId: Number(productId) });
+      } catch (err) {
+        buyError = err.message;
+      }
+
+      if (purchase) {
+        try {
+          await saveTransaction(userId, {
+            reference:     purchase.reference,
+            customerName,
+            email,
+            productId:     Number(productId),
+            productName:   product.name,
+            price:         product.price,
+            novaId:        purchase.id             || null,
+            transactionId: purchase.transactionId  || purchase.reference,
+            status:        purchase.status         || 'completed',
+            activationUrl: purchase.activationUrl  || null,
+            result:        purchase.result         || null,
+            bulk:          true,
+          });
+        } catch (dbErr) {
+          console.error(`[quickBuy] Error DB item ${i + 1}:`, dbErr.message);
+        }
+        results.push({ index: i + 1, success: true, data: purchase });
+      } else {
+        results.push({ index: i + 1, success: false, error: buyError });
+      }
+
+      if (i < quantity - 1) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+
+    const successCount = results.filter((r) =>  r.success).length;
+    const failCount    = results.filter((r) => !r.success).length;
+
+    return res.json({
+      success: true,
+      message: `${successCount} de ${quantity} compras exitosas`,
+      data:    { results, successCount, failCount, customerName, email, product },
+    });
+  } catch (err) {
+    console.error('Error en quickBuy:', err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || 'Error al ejecutar compras rápidas',
+    });
+  } finally {
+    bulkExecutionLock.delete(userId);
+  }
+};
+
+// ── PUT /api/nova/credentials ─────────────────────────────────────────────────
+
+exports.updateCredentials = async (req, res) => {
+  try {
+    const { userId } = getUserScope(req);
+    const { clientId, clientSecret } = req.body;
+
+    if (!clientId?.trim() || !clientSecret?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Client ID y Client Secret son requeridos',
+      });
+    }
+
+    // Verificar que las credenciales funcionan con Nova antes de guardar
+    try {
+      const testService = new NovaUserService('_verify_', clientId.trim(), clientSecret.trim());
+      await testService.authenticate();
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'Las credenciales son inválidas — Nova las rechazó. Verifica tu Client ID y Client Secret.',
+      });
+    }
+
+    const encryptedClientId     = encrypt(clientId.trim());
+    const encryptedClientSecret = encrypt(clientSecret.trim());
+
+    await withUserScope(userId, async (client) => {
+      return client.query(
+        'UPDATE users SET nova_client_id = $1, nova_client_secret = $2 WHERE id = $3',
+        [encryptedClientId, encryptedClientSecret, userId]
+      );
+    });
+
+    // Limpiar todos los caches del usuario para forzar re-autenticación
+    credentialsCache.delete(userId);
+    clearUserCache(userId);
+
+    return res.json({ success: true, message: 'Credenciales actualizadas exitosamente' });
+  } catch (err) {
+    console.error('Error en updateCredentials:', err);
+    return res.status(500).json({ success: false, message: 'Error al actualizar las credenciales' });
   }
 };

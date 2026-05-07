@@ -54,6 +54,17 @@ getHistory: async (filters = {}) => {
     const response = await api.post('/nova/bulk/execute', { items }, { timeout: 180000 });
     return response.data;
   },
+
+  quickBuy: async (productId, customerName, email, quantity) => {
+    // Timeout: 50 items × ~300ms + margen
+    const response = await api.post('/nova/quick', { productId, customerName, email, quantity }, { timeout: 120000 });
+    return response.data;
+  },
+
+  updateCredentials: async (clientId, clientSecret) => {
+    const response = await api.put('/nova/credentials', { clientId, clientSecret });
+    return response.data;
+  },
 };
 
 

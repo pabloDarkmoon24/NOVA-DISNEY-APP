@@ -133,11 +133,21 @@ const buyLimiter = rateLimit({
   message: { success: false, message: 'Límite de compras alcanzado, intenta más tarde' },
 });
 
+// Bulk puede procesar hasta 100 ítems por request — límite más estricto
+const bulkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { success: false, message: 'Límite de lotes alcanzado, intenta más tarde' },
+});
+
 app.use('/api/',                   generalLimiter);
 app.use('/api/auth/login',         authLimiter);
 app.use('/api/auth/register',      authLimiter);
 app.use('/api/nova/buy',           buyLimiter);
-app.use('/api/nova/bulk/execute',  buyLimiter);
+app.use('/api/nova/bulk/execute',  bulkLimiter);
+app.use('/api/nova/quick',         bulkLimiter);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', async (req, res) => {

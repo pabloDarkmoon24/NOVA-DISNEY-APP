@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, History, LogOut, Zap, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, History, LogOut, Zap, BarChart2, Settings, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
@@ -27,23 +27,31 @@ export default function Navbar() {
           to="/dashboard"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <LayoutDashboard size={16} />
+          <LayoutDashboard size={15} />
           Dashboard
+        </NavLink>
+
+        <NavLink
+          to="/quick"
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Zap size={15} />
+          Masivo Rápido
         </NavLink>
 
         <NavLink
           to="/bulk"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <Zap size={16} />
-          Masivo
+          <Layers size={15} />
+          Masivo Excel
         </NavLink>
 
         <NavLink
           to="/history"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <History size={16} />
+          <History size={15} />
           Historial
         </NavLink>
 
@@ -51,7 +59,7 @@ export default function Navbar() {
           to="/traceability"
           className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
         >
-          <BarChart2 size={16} />
+          <BarChart2 size={15} />
           Trazabilidad
         </NavLink>
       </div>
@@ -61,6 +69,18 @@ export default function Navbar() {
           <div className="navbar-avatar">{initials}</div>
           <span className="navbar-user-name">{user?.name}</span>
         </div>
+
+        {/* Configuración — icono discreto, sin etiqueta */}
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `btn btn-secondary btn-sm btn-icon ${isActive ? 'active' : ''}`
+          }
+          title="Configuración"
+          style={({ isActive }) => isActive ? { color: 'var(--color-primary)', borderColor: 'rgba(34,197,94,0.3)' } : {}}
+        >
+          <Settings size={15} />
+        </NavLink>
 
         <button
           className="btn btn-secondary btn-sm btn-icon"

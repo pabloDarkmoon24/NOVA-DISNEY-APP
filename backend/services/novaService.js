@@ -233,6 +233,13 @@ async getBalance() {
   }
 }
 
+// ── Limpia el cache de token/auth de un usuario (ej. al cambiar credenciales) ──
+
+function clearUserCache(userId) {
+  tokenCache.delete(userId);
+  authPromises.delete(userId);
+}
+
 // ── Factory: crea una instancia por usuario usando sus credenciales cifradas ──
 
 async function getNovaService(userId, encryptedClientId, encryptedClientSecret) {
@@ -251,5 +258,5 @@ async function getNovaService(userId, encryptedClientId, encryptedClientSecret) 
   }
 }
 
-module.exports = { getNovaService };
+module.exports = { getNovaService, NovaUserService, clearUserCache };
 
